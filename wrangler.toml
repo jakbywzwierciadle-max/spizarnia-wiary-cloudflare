@@ -1,4 +1,4 @@
-name = "spizarnia-wiary-2"
+name = "spizarnia-wiary"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 

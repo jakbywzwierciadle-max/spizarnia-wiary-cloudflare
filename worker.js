@@ -1,12 +1,21 @@
 const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
 // Lista mirrorów Piped — automatyczny fallback
-const PIPED_MIRRORS = [
-  "https://piped-api.cfe.re",
-  "https://pipedapi.r4fo.com",
-  "https://api-piped.mha.fi",
-  "https://piped-api.garudalinux.org"
-];
+const INVIDIOUS = "https://invidious.snopyta.org/api/v1/videos/";
+
+if (!data || !data.audioStreams) {
+  const inv = await fetch(`${INVIDIOUS}${id}`).then(r => r.json());
+  if (inv.adaptiveFormats) {
+    const audio = inv.adaptiveFormats.find(f => f.type.startsWith("audio/"));
+    if (audio) {
+      const stream = await fetch(audio.url);
+      await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
+      return new Response("OK — zapisano z Invidious");
+    }
+  }
+  return new Response("Brak audioStreams — Piped i Invidious padły", { status: 502 });
+}
+
 
 
 // Pobieranie JSON z fallbackiem

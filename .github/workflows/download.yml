@@ -34,7 +34,7 @@ jobs:
           while read ID; do
             echo "Processing video ID: $ID"
 
-            STREAM_URL=$(curl -s "https://invidious.snopyta.org/api/v1/videos/$ID" \
+            STREAM_URL=$(curl -s "https://invidious.flokinet.to/api/v1/videos/$ID" \
               | jq -r '.adaptiveFormats[] | select(.type=="audio/mp4") | .url' | head -n 1)
 
             if [ -z "$STREAM_URL" ]; then
@@ -52,6 +52,7 @@ jobs:
           done < video_ids.txt
 
           ls -l output
+
 
       - name: Upload to Cloudflare R2
         env:

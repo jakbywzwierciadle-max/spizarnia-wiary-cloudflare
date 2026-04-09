@@ -28,7 +28,7 @@ jobs:
             --max-downloads 2 \
             --no-playlist \
             -o "latest.%(ext)s" \
-            https://www.youtube.com/@spizarniawiary/videos
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ"
 
       - name: Rename file to timestamp
         run: |

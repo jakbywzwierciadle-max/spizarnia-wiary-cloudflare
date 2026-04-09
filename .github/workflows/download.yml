@@ -40,7 +40,8 @@ jobs:
           while read ID; do
             echo "Processing video ID: $ID"
 
-            yt-dlp -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
+            yt-dlp --cookies <(echo "${YOUTUBE_COOKIES}") -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
+
 
             # Konwersja do MP3
             for f in output/$ID.*; do

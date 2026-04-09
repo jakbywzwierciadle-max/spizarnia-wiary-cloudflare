@@ -17,6 +17,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl ffmpeg
+    
+      - name: Fetch latest 2 video IDs
+        run: |
+          curl -s "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ" \
+            | grep -oP '(?<=<yt:videoId>).*?(?=</yt:videoId>)' \
+            | head -n 2 > video_ids.txt
+
+          echo "Fetched video IDs:"
+          cat video_ids.txt
 
       - name: Download audio via Invidious API
         run: |

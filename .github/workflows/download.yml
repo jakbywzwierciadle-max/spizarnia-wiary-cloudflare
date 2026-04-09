@@ -13,21 +13,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download latest 2 videos via API
+      - name: Install tools
         run: |
-          mkdir output
+          sudo apt-get update
+          sudo apt-get install -y jq curl ffmpeg
 
-          # Pobierz listę filmów z RSS YouTube
+      - name: Fetch latest 2 video IDs
+        run: |
           curl -s "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ" \
             | grep -oP '(?<=<yt:videoId>).*?(?=</yt:videoId>)' \
             | head -n 2 > video_ids.txt
 
-          # Pobierz audio przez API (działa zawsze)
+      - name: Download audio via Piped API
+        run: |
+          mkdir -p output
+
           while read ID; do
-            curl -L "https://pipedapi.kavin.rocks/streams/$ID" \
-              | jq -r '.audioStreams[0].url' \
-              | xargs -I {} curl -L "{}" -o "output/${ID}.mp3"
+            echo "Processing video ID: $ID"
+
+            STREAM_URL=$(curl -s "https://pipedapi.kavin.rocks/streams/$ID" \
+              | jq -r '.audioStreams[0].url // empty')
+
+            if [ -z "$STREAM_URL" ]; then
+              echo "No audio stream for $ID — skipping"
+              continue
+            fi
+
+            echo "Downloading audio for $ID"
+            curl -L "$STREAM_URL" -o "output/$ID.webm"
+
+            echo "Converting to MP3"
+            ffmpeg -i "output/$ID.webm" -vn -ab 128k "output/$ID.mp3"
+
+            rm "output/$ID.webm"
           done < video_ids.txt
+
+          ls -l output
 
       - name: Upload to Cloudflare R2
         env:
@@ -37,11 +58,4 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
-          aws configure set default.region auto
-
-          for f in output/*.mp3; do
-            aws s3 cp "$f" \
-              "s3://${R2_BUCKET}/$(basename "$f")" \
-              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          done
+          aws configure set aws

@@ -1,6 +1,6 @@
 const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
-// 🔹 Mirrory Piped
+// 🔹 Mirrory Piped (fallback 1)
 const PIPED_MIRRORS = [
   "https://piped-api.cfe.re",
   "https://pipedapi.r4fo.com",
@@ -8,31 +8,19 @@ const PIPED_MIRRORS = [
   "https://piped-api.garudalinux.org"
 ];
 
-// 🔹 Mirrory Invidious
+// 🔹 Mirrory Invidious (fallback 2)
 const INVIDIOUS_MIRRORS = [
   "https://invidious.flokinet.to",
   "https://invidious.projectsegfau.lt",
   "https://invidious.lunar.icu"
 ];
 
-// 🔹 Mirrory yt-dlp
-const YTDLP_MIRRORS = [
-  "https://yt-dlp-web-api.vercel.app/api/info?id=",
-  "https://yt-dlp-mirror.vercel.app/api/info?id="
-];
+// 🔹 Twoja prywatna instancja yt-dlp-api (fallback 3)
+const YTDLP_PRIVATE = "https://yt-dlp-api.<twoja-domena>.workers.dev/?id=";
 
-async function fetchYtdlp(id) {
-  for (const base of YTDLP_MIRRORS) {
-    try {
-      const res = await fetch(`${base}${id}`);
-      const data = await res.json();
-      if (data.formats) return data;
-    } catch (e) {
-      console.log(`❌ yt-dlp ${base} padł: ${e.message}`);
-    }
-  }
-  return null;
-}
+// ----------------------
+// 🔧 FUNKCJE POMOCNICZE
+// ----------------------
 
 async function fetchJsonWithFallback(urls) {
   for (const url of urls) {
@@ -64,14 +52,33 @@ async function fetchInvidious(id) {
   return null;
 }
 
+async function fetchYtdlpPrivate(id) {
+  try {
+    const res = await fetch(`${YTDLP_PRIVATE}${id}`);
+    const data = await res.json();
+    if (data.formats) return data;
+  } catch (e) {
+    console.log("❌ Private yt-dlp API error:", e.message);
+  }
+  return null;
+}
+
+// ----------------------
+// 🔧 GŁÓWNY HANDLER
+// ----------------------
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // TEST
     if (url.pathname === "/test") {
       return new Response("OK — Worker działa");
     }
 
+    // ----------------------
+    // 🔵 POBIERANIE AUDIO
+    // ----------------------
     if (url.pathname === "/download") {
       const id = url.searchParams.get("id");
       if (!id) return new Response("Missing id", { status: 400 });
@@ -98,16 +105,16 @@ export default {
         }
       }
 
-      // 3️⃣ YT-DLP
+      // 3️⃣ TWOJA PRYWATNA INSTANCJA YT-DLP
       if (!data || !data.audioStreams) {
-        console.log("⚠ Invidious padł — próbuję yt-dlp");
-        const ytdlp = await fetchYtdlp(id);
+        console.log("⚠ Invidious padł — próbuję prywatnego yt-dlp");
+        const ytdlp = await fetchYtdlpPrivate(id);
         if (ytdlp && ytdlp.formats) {
           const audio = ytdlp.formats.find(f => f.acodec !== "none" && !f.vcodec);
           if (audio && audio.url) {
             const stream = await fetch(audio.url);
             await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
-            return new Response("OK — zapisano z yt-dlp");
+            return new Response("OK — zapisano z prywatnego yt-dlp");
           }
         }
       }
@@ -121,6 +128,41 @@ export default {
       }
 
       return new Response("Brak audioStreams — wszystkie źródła padły", { status: 502 });
+    }
+
+    // ----------------------
+    // 🔵 RSS PODCASTU
+    // ----------------------
+    if (url.pathname === "/podcast") {
+      const list = await env.R2_BUCKET.list();
+
+      const items = list.objects.map(obj => {
+        const id = obj.key.replace(".m4a", "");
+        const fileUrl = `https://pub-${env.R2_BUCKET.id}.r2.dev/${obj.key}`;
+        return `
+          <item>
+            <title>${id}</title>
+            <enclosure url="${fileUrl}" length="${obj.size}" type="audio/mp4" />
+            <guid>${id}</guid>
+            <pubDate>${new Date(obj.uploaded).toUTCString()}</pubDate>
+          </item>
+        `;
+      }).join("");
+
+      const rss = `
+        <rss version="2.0">
+          <channel>
+            <title>Spiżarnia Wiary – Podcast</title>
+            <link>${url.origin}/podcast</link>
+            <description>Automatyczny podcast z kanału YouTube Spiżarnia Wiary</description>
+            ${items}
+          </channel>
+        </rss>
+      `.trim();
+
+      return new Response(rss, {
+        headers: { "Content-Type": "application/rss+xml" }
+      });
     }
 
     return new Response("OK — Worker działa");

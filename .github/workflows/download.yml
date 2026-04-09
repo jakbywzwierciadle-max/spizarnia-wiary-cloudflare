@@ -50,7 +50,7 @@ jobs:
 
           ls -l output
 
-      - name: Upload to Cloudflare R2
+          - name: Upload to Cloudflare R2
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -58,4 +58,12 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
         run: |
           aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-          aws configure set aws
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+
+          for f in output/*.mp3; do
+            echo "Uploading $f"
+            aws s3 cp "$f" \
+              "s3://${R2_BUCKET}/$(basename "$f")" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          done

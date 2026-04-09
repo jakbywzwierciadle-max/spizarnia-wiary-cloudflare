@@ -12,7 +12,7 @@ export default {
   if (!id) return new Response("Missing id", { status: 400 });
 
   try {
-    const api = `https://pipedapi.kavin.rocks/streams/${id}`;
+    const api = `https://pipedapi.syncpiped.video/streams/${id}`;
     const res = await fetch(api);
 
     let data;

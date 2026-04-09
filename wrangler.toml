@@ -1,14 +1,8 @@
 name = "spizarnia-wiary"
-main = "src/worker.js"
-compatibility_date = "2024-04-09"
+main = "worker.js"
+compatibility_date = "2024-01-01"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "spizarnia-wiary"
 preview_bucket_name = "spizarnia-wiary"
-
-[vars]
-BASE_URL = "https://spizarnia-wiary.example.workers.dev"
-FEED_TITLE = "Spiżarnia Wiary"
-FEED_DESCRIPTION = "Podcast Spiżarnia Wiary"
-FEED_LANGUAGE = "pl-PL"

@@ -3,7 +3,7 @@ name: Download latest audio and upload to R2
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"   # co 6 godzin
+    - cron: "0 */6 * * *"
 
 jobs:
   download:
@@ -13,33 +13,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install yt-dlp
+      - name: Download latest 2 videos via API
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          pip install yt-dlp
+          mkdir output
 
-      - name: Download latest 2 videos as MP3
-        env:
-          YT_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        run: |
-          echo "$YT_COOKIES" > cookies.txt
+          # Pobierz listę filmów z RSS YouTube
+          curl -s "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ" \
+            | grep -oP '(?<=<yt:videoId>).*?(?=</yt:videoId>)' \
+            | head -n 2 > video_ids.txt
 
-          yt-dlp \
-            --cookies cookies.txt \
-            --extract-audio \
-            --audio-format mp3 \
-            --audio-quality 0 \
-            --max-downloads 2 \
-            -o "%(upload_date)s_%(title)s.%(ext)s" \
-            "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ"
-
-      - name: Rename file to timestamp
-        run: |
-          FILE=$(ls latest.*)
-          NEW="spizarniawiary_$(date +%Y-%m-%d_%H-%M-%S).mp3"
-          mv "$FILE" "$NEW"
-          echo "AUDIO_FILE=$NEW" >> $GITHUB_ENV
+          # Pobierz audio przez API (działa zawsze)
+          while read ID; do
+            curl -L "https://pipedapi.kavin.rocks/streams/$ID" \
+              | jq -r '.audioStreams[0].url' \
+              | xargs -I {} curl -L "{}" -o "output/${ID}.mp3"
+          done < video_ids.txt
 
       - name: Upload to Cloudflare R2
         env:
@@ -52,6 +40,8 @@ jobs:
           aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
           aws configure set default.region auto
 
-          aws s3 cp "$AUDIO_FILE" \
-            "s3://${R2_BUCKET}/$AUDIO_FILE" \
-            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          for f in output/*.mp3; do
+            aws s3 cp "$f" \
+              "s3://${R2_BUCKET}/$(basename "$f")" \
+              --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          done

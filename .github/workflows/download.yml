@@ -32,6 +32,11 @@ jobs:
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod +x /usr/local/bin/yt-dlp
     
+      - name: Write cookies to file
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          echo "${YOUTUBE_COOKIES}" > cookies.txt
 
       - name: Download audio via yt-dlp
         run: |
@@ -40,10 +45,8 @@ jobs:
           while read ID; do
             echo "Processing video ID: $ID"
 
-            yt-dlp --cookies <(echo "${YOUTUBE_COOKIES}") -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
+            yt-dlp --cookies cookies.txt -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
 
-
-            # Konwersja do MP3
             for f in output/$ID.*; do
               ffmpeg -i "$f" -vn -ab 128k "output/$ID.mp3"
               rm "$f"
@@ -51,6 +54,7 @@ jobs:
           done < video_ids.txt
 
           ls -l output
+
 
       - name: Upload to Cloudflare R2
         env:

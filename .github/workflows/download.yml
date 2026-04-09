@@ -50,7 +50,7 @@ jobs:
 
           ls -l output
 
-          - name: Upload to Cloudflare R2
+      - name: Upload to Cloudflare R2
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

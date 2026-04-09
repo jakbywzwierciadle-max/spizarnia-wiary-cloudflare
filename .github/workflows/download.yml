@@ -27,32 +27,29 @@ jobs:
           echo "Fetched video IDs:"
           cat video_ids.txt
 
-      - name: Download audio via Invidious API
+      - name: Install yt-dlp
+        run: |
+          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+          sudo chmod +x /usr/local/bin/yt-dlp
+    
+
+      - name: Download audio via yt-dlp
         run: |
           mkdir -p output
 
           while read ID; do
             echo "Processing video ID: $ID"
 
-            STREAM_URL=$(curl -s "https://invidious.flokinet.to/api/v1/videos/$ID" \
-              | jq -r '.adaptiveFormats[] | select(.type=="audio/mp4") | .url' | head -n 1)
+            yt-dlp -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
 
-            if [ -z "$STREAM_URL" ]; then
-              echo "No audio stream for $ID — skipping"
-              continue
-            fi
-
-            echo "Downloading audio for $ID"
-            curl -L "$STREAM_URL" -o "output/$ID.m4a"
-
-            echo "Converting to MP3"
-            ffmpeg -i "output/$ID.m4a" -vn -ab 128k "output/$ID.mp3"
-
-            rm "output/$ID.m4a"
+            # Konwersja do MP3
+            for f in output/$ID.*; do
+              ffmpeg -i "$f" -vn -ab 128k "output/$ID.mp3"
+              rm "$f"
+            done
           done < video_ids.txt
 
           ls -l output
-
 
       - name: Upload to Cloudflare R2
         env:

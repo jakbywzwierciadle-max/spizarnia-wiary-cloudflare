@@ -38,22 +38,24 @@ jobs:
         run: |
           echo "${YOUTUBE_COOKIES}" > cookies.txt
 
-      - name: Download audio via yt-dlp
+      - name: Download audio via public API
         run: |
           mkdir -p output
 
           while read ID; do
             echo "Processing video ID: $ID"
 
-            yt-dlp --cookies cookies.txt -f bestaudio -o "output/%(id)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
+            curl -L "https://piped.video/api/v1/download?url=https://www.youtube.com/watch?v=$ID&itag=140" \
+              -o "output/$ID.m4a"
 
-            for f in output/$ID.*; do
-              ffmpeg -i "$f" -vn -ab 128k "output/$ID.mp3"
-              rm "$f"
-            done
+            echo "Converting to MP3"
+            ffmpeg -i "output/$ID.m4a" -vn -ab 128k "output/$ID.mp3"
+
+            rm "output/$ID.m4a"
           done < video_ids.txt
 
           ls -l output
+
 
 
       - name: Upload to Cloudflare R2

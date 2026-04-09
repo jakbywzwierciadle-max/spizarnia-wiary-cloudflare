@@ -1,0 +1,53 @@
+name: Download latest audio and upload to R2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"   # co 6 godzin
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yt-dlp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp
+
+      - name: Download latest video as MP3
+        run: |
+          yt-dlp \
+            --extract-audio \
+            --audio-format mp3 \
+            --audio-quality 0 \
+            --max-downloads 1 \
+            --no-playlist \
+            -o "latest.%(ext)s" \
+            https://www.youtube.com/@spizarniawiary/videos
+
+      - name: Rename file to timestamp
+        run: |
+          FILE=$(ls latest.*)
+          NEW="spizarniawiary_$(date +%Y-%m-%d_%H-%M-%S).mp3"
+          mv "$FILE" "$NEW"
+          echo "AUDIO_FILE=$NEW" >> $GITHUB_ENV
+
+      - name: Upload to Cloudflare R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: spizarnia-wiary-audio
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+
+          aws s3 cp "$AUDIO_FILE" \
+            "s3://${R2_BUCKET}/$AUDIO_FILE" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"

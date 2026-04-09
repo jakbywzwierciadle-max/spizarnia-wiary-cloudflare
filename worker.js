@@ -1,19 +1,23 @@
 const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
 // 🔹 Mirrory Piped
-const PIPED_MIRRORS = [
-  "https://piped-api.cfe.re",
-  "https://pipedapi.r4fo.com",
-  "https://api-piped.mha.fi",
-  "https://piped-api.garudalinux.org"
+const YTDLP_MIRRORS = [
+  "https://yt-dlp-web-api.vercel.app/api/info?id=",
+  "https://yt-dlp-mirror.vercel.app/api/info?id="
 ];
 
-// 🔹 Mirrory Invidious
-const INVIDIOUS_MIRRORS = [
-  "https://invidious.flokinet.to",
-  "https://invidious.projectsegfau.lt",
-  "https://invidious.lunar.icu"
-];
+async function fetchYtdlp(id) {
+  for (const base of YTDLP_MIRRORS) {
+    try {
+      const res = await fetch(`${base}${id}`);
+      const data = await res.json();
+      if (data.formats) return data;
+    } catch (e) {
+      console.log(`❌ yt-dlp ${base} padł: ${e.message}`);
+    }
+  }
+  return null;
+}
 
 // 🔹 Fallback API yt‑dlp‑web‑api
 const YTDLP_API = "https://yt-dlp-web-api.vercel.app/api/info?id=";
@@ -90,7 +94,7 @@ export default {
       if (!data || !data.audioStreams) {
         console.log("⚠ Brak audioStreams — próbuję yt‑dlp‑web‑api");
         try {
-          const ytdlp = await fetch(`${YTDLP_API}${id}`).then(r => r.json());
+         const ytdlp = await fetchYtdlp(id);
           if (ytdlp.formats) {
             const audio = ytdlp.formats.find(f => f.acodec !== "none" && !f.vcodec);
             if (audio && audio.url) {

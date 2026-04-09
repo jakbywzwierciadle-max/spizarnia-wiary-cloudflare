@@ -1,38 +1,31 @@
 const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
 // Lista mirrorów Piped — automatyczny fallback
+const PIPED_MIRRORS = [
+  "https://piped-api.cfe.re",
+  "https://pipedapi.r4fo.com",
+  "https://api-piped.mha.fi",
+  "https://piped-api.garudalinux.org"
+];
+
+// Invidious jako awaryjny fallback
 const INVIDIOUS = "https://invidious.snopyta.org/api/v1/videos/";
 
-if (!data || !data.audioStreams) {
-  const inv = await fetch(`${INVIDIOUS}${id}`).then(r => r.json());
-  if (inv.adaptiveFormats) {
-    const audio = inv.adaptiveFormats.find(f => f.type.startsWith("audio/"));
-    if (audio) {
-      const stream = await fetch(audio.url);
-      await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
-      return new Response("OK — zapisano z Invidious");
-    }
-  }
-  return new Response("Brak audioStreams — Piped i Invidious padły", { status: 502 });
-}
-
-
-
-// Pobieranie JSON z fallbackiem
+// Pobieranie JSON z fallbackiem po wielu URL-ach
 async function fetchJsonWithFallback(urls) {
-  for (const base of urls) {
+  for (const url of urls) {
     try {
-      const res = await fetch(base);
+      const res = await fetch(url);
       const text = await res.text();
 
       try {
         const json = JSON.parse(text);
         return json;
       } catch (e) {
-        console.log(`❌ Mirror ${base} zwrócił HTML zamiast JSON`);
+        console.log(`❌ ${url} zwrócił HTML zamiast JSON`);
       }
     } catch (e) {
-      console.log(`❌ Mirror ${base} padł: ${e.message}`);
+      console.log(`❌ ${url} padł: ${e.message}`);
     }
   }
   return null;
@@ -58,92 +51,33 @@ export default {
 
       console.log("▶ Pobieram audio dla ID:", id);
 
+      // Najpierw próbujemy Piped (wszystkie mirrory)
       const apiUrls = PIPED_MIRRORS.map(m => `${m}/streams/${id}`);
-      const data = await fetchJsonWithFallback(apiUrls);
+      let data = await fetchJsonWithFallback(apiUrls);
 
+      // Jeśli Piped nie zwróci audioStreams → próbujemy Invidious
       if (!data || !data.audioStreams) {
-        return new Response("Brak audioStreams — wszystkie mirrory padły", { status: 502 });
+        console.log("⚠ Brak audioStreams z Piped — próbuję Invidious");
+
+        try {
+          const inv = await fetch(`${INVIDIOUS}${id}`).then(r => r.json());
+
+          if (inv.adaptiveFormats && Array.isArray(inv.adaptiveFormats)) {
+            const audio = inv.adaptiveFormats.find(f =>
+              typeof f.type === "string" && f.type.startsWith("audio/")
+            );
+
+            if (audio && audio.url) {
+              const stream = await fetch(audio.url);
+              await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
+              return new Response("OK — zapisano z Invidious");
+            }
+          }
+
+          return new Response("Brak audioStreams — Piped i Invidious padły", { status: 502 });
+        } catch (e) {
+          console.log("❌ Invidious error:", e.message);
+          return new Response("Błąd Invidious — Piped i Invidious padły", { status: 502 });
+        }
       }
 
-      const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-      const audio = await fetch(best.url);
-
-      await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
-
-      return new Response("OK — zapisano do R2");
-    }
-
-    //
-    // 🔵 CRON — pobieranie nowych filmów
-    //
-    if (url.pathname === "/cron") {
-      const apiUrls = PIPED_MIRRORS.map(m => `${m}/channel/${CHANNEL_ID}`);
-      const data = await fetchJsonWithFallback(apiUrls);
-
-      if (!data || !data.relatedStreams) {
-        return new Response("Cron ERROR — brak relatedStreams", { status: 502 });
-      }
-
-      const videos = data.relatedStreams.slice(0, 10);
-
-      for (const v of videos) {
-        const id = v.url.split("=")[1];
-
-        const exists = await env.R2_BUCKET.head(`${id}.m4a`);
-        if (exists) continue;
-
-        console.log("▶ Nowy film:", id);
-
-        const streamUrls = PIPED_MIRRORS.map(m => `${m}/streams/${id}`);
-        const streamData = await fetchJsonWithFallback(streamUrls);
-
-        if (!streamData || !streamData.audioStreams) continue;
-
-        const best = streamData.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-        const audio = await fetch(best.url);
-
-        await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
-      }
-
-      return new Response("Cron OK");
-    }
-
-    //
-    // 🔵 RSS PODCASTU
-    //
-    if (url.pathname === "/podcast") {
-      const list = await env.R2_BUCKET.list();
-
-      const items = list.objects.map(obj => {
-        const id = obj.key.replace(".m4a", "");
-        const fileUrl = `https://pub-${env.R2_BUCKET.id}.r2.dev/${obj.key}`;
-
-        return `
-          <item>
-            <title>${id}</title>
-            <enclosure url="${fileUrl}" length="${obj.size}" type="audio/mp4" />
-            <guid>${id}</guid>
-            <pubDate>${new Date(obj.uploaded).toUTCString()}</pubDate>
-          </item>
-        `;
-      }).join("");
-
-      const rss = `
-        <rss version="2.0">
-          <channel>
-            <title>Spiżarnia Wiary – Podcast</title>
-            <link>${url.origin}/podcast</link>
-            <description>Automatyczny podcast z kanału YouTube Spiżarnia Wiary</description>
-            ${items}
-          </channel>
-        </rss>
-      `.trim();
-
-      return new Response(rss, {
-        headers: { "Content-Type": "application/rss+xml" }
-      });
-    }
-
-    return new Response("OK — Worker działa");
-  }
-};

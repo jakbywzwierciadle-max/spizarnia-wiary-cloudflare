@@ -24,15 +24,15 @@ jobs:
             | grep -oP '(?<=<yt:videoId>).*?(?=</yt:videoId>)' \
             | head -n 2 > video_ids.txt
 
-      - name: Download audio via Piped API
+            - name: Download audio via Invidious API
         run: |
           mkdir -p output
 
           while read ID; do
             echo "Processing video ID: $ID"
 
-            STREAM_URL=$(curl -s "https://pipedapi.kavin.rocks/streams/$ID" \
-              | jq -r '.audioStreams[0].url // empty')
+            STREAM_URL=$(curl -s "https://invidious.snopyta.org/api/v1/videos/$ID" \
+              | jq -r '.adaptiveFormats[] | select(.type=="audio/mp4") | .url' | head -n 1)
 
             if [ -z "$STREAM_URL" ]; then
               echo "No audio stream for $ID — skipping"
@@ -40,15 +40,16 @@ jobs:
             fi
 
             echo "Downloading audio for $ID"
-            curl -L "$STREAM_URL" -o "output/$ID.webm"
+            curl -L "$STREAM_URL" -o "output/$ID.m4a"
 
             echo "Converting to MP3"
-            ffmpeg -i "output/$ID.webm" -vn -ab 128k "output/$ID.mp3"
+            ffmpeg -i "output/$ID.m4a" -vn -ab 128k "output/$ID.mp3"
 
-            rm "output/$ID.webm"
+            rm "output/$ID.m4a"
           done < video_ids.txt
 
           ls -l output
+
 
       - name: Upload to Cloudflare R2
         env:

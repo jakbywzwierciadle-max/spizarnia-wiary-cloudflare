@@ -1,33 +1,43 @@
+const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1) DOWNLOAD AUDIO
-    if (url.pathname === "/download") {
-      const id = url.searchParams.get("id");
-      if (!id) return new Response("Missing id", { status: 400 });
-
-      const api = `https://pipedapi.kavin.rocks/streams/${id}`;
+    // 1) CRON – automatyczne pobieranie nowych filmów
+    if (url.pathname === "/cron") {
+      const api = `https://pipedapi.kavin.rocks/channel/${CHANNEL_ID}`;
       const data = await fetch(api).then(r => r.json());
 
-      if (!data.audioStreams || data.audioStreams.length === 0) {
-        return new Response("No audio available", { status: 404 });
+      if (!data.relatedStreams) {
+        return new Response("No videos", { status: 500 });
       }
 
-      const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-      const audio = await fetch(best.url);
+      const videos = data.relatedStreams.slice(0, 10); // ostatnie 10 filmów
 
-      await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
+      for (const v of videos) {
+        const id = v.url.split("=")[1];
 
-      return new Response(audio.body, {
-        headers: {
-          "Content-Type": "audio/mp4",
-          "Content-Disposition": `attachment; filename="${id}.m4a"`
-        }
-      });
+        // sprawdź czy plik już istnieje
+        const exists = await env.R2_BUCKET.head(`${id}.m4a`);
+        if (exists) continue;
+
+        // pobierz audio
+        const streamApi = `https://pipedapi.kavin.rocks/streams/${id}`;
+        const streamData = await fetch(streamApi).then(r => r.json());
+
+        if (!streamData.audioStreams) continue;
+
+        const best = streamData.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
+        const audio = await fetch(best.url);
+
+        await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
+      }
+
+      return new Response("Cron OK");
     }
 
-    // 2) PODCAST RSS FEED
+    // 2) RSS FEED
     if (url.pathname === "/podcast") {
       const list = await env.R2_BUCKET.list();
 
@@ -48,9 +58,9 @@ export default {
       const rss = `
         <rss version="2.0">
           <channel>
-            <title>Spizarnia Wiary</title>
+            <title>Spiżarnia Wiary – Podcast</title>
             <link>${url.origin}/podcast</link>
-            <description>Podcast generowany automatycznie z YouTube</description>
+            <description>Automatyczny podcast z kanału YouTube Spiżarnia Wiary</description>
             ${items}
           </channel>
         </rss>

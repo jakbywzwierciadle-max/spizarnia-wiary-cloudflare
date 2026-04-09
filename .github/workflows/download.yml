@@ -19,15 +19,19 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install yt-dlp
 
-      - name: Download latest video as MP3
+      - name: Download latest 2 videos as MP3
+        env:
+          YT_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
+          echo "$YT_COOKIES" > cookies.txt
+
           yt-dlp \
+            --cookies cookies.txt \
             --extract-audio \
             --audio-format mp3 \
             --audio-quality 0 \
             --max-downloads 2 \
-            --no-playlist \
-            -o "latest.%(ext)s" \
+            -o "%(upload_date)s_%(title)s.%(ext)s" \
             "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ"
 
       - name: Rename file to timestamp

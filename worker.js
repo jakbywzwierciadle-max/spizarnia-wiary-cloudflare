@@ -7,35 +7,36 @@ export default {
     //
     // 1) RĘCZNE POBIERANIE AUDIO
     //
-    if (url.pathname === "/download") {
-      const id = url.searchParams.get("id");
-      if (!id) return new Response("Missing id", { status: 400 });
+  if (url.pathname === "/download") {
+  const id = url.searchParams.get("id");
+  if (!id) return new Response("Missing id", { status: 400 });
 
-      try {
-        console.log("Pobieram metadane z Piped:", id);
+  try {
+    const api = `https://pipedapi.kavin.rocks/streams/${id}`;
+    const res = await fetch(api);
 
-        const api = `https://pipedapi.kavin.rocks/streams/${id}`;
-        const data = await fetch(api).then(r => r.json());
-
-        console.log("Odpowiedź Piped:", JSON.stringify(data).slice(0, 200));
-
-        if (!data.audioStreams) {
-          return new Response("Brak audioStreams", { status: 500 });
-        }
-
-        const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-        console.log("Wybrany strumień:", best.url);
-
-        const audio = await fetch(best.url);
-
-        await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
-
-        return new Response("OK — zapisano do R2");
-      } catch (err) {
-        console.error("Błąd:", err);
-        return new Response("ERROR: " + err.message, { status: 500 });
-      }
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      return new Response("Piped returned invalid JSON", { status: 502 });
     }
+
+    if (!data.audioStreams || data.audioStreams.length === 0) {
+      return new Response("Brak audioStreams", { status: 404 });
+    }
+
+    const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
+    const audio = await fetch(best.url);
+
+    await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
+
+    return new Response("OK — zapisano do R2");
+  } catch (err) {
+    return new Response("ERROR: " + err.message, { status: 500 });
+  }
+}
+
 
     //
     // 2) AUTOMATYCZNE POBIERANIE NOWYCH ODCINKÓW (CRON)

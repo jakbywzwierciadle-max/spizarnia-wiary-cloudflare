@@ -3,9 +3,9 @@ main = "src/worker.js"
 compatibility_date = "2024-04-09"
 
 [[r2_buckets]]
-binding = "AUDIO_BUCKET"
-bucket_name = "spizarnia-wiary-audio"
-preview_bucket_name = "spizarnia-wiary-audio-preview"
+binding = "R2_BUCKET"
+bucket_name = "spizarnia-wiary"
+preview_bucket_name = "spizarnia-wiary"
 
 [vars]
 BASE_URL = "https://spizarnia-wiary.example.workers.dev"

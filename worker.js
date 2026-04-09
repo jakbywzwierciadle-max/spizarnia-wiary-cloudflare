@@ -1,84 +1,105 @@
 const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
+// Lista mirrorów Piped — automatyczny fallback
+const PIPED_MIRRORS = [
+  "https://pipedapi.video",
+  "https://pipedapi.syncpiped.video",
+  "https://pipedapi.moomoo.me",
+  "https://pipedapi.kavin.rocks"
+];
+
+// Pobieranie JSON z fallbackiem
+async function fetchJsonWithFallback(urls) {
+  for (const base of urls) {
+    try {
+      const res = await fetch(base);
+      const text = await res.text();
+
+      try {
+        const json = JSON.parse(text);
+        return json;
+      } catch (e) {
+        console.log(`❌ Mirror ${base} zwrócił HTML zamiast JSON`);
+      }
+    } catch (e) {
+      console.log(`❌ Mirror ${base} padł: ${e.message}`);
+    }
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     //
-    // 1) RĘCZNE POBIERANIE AUDIO
+    // 🔵 TEST — sprawdza czy Worker działa
     //
-  if (url.pathname === "/download") {
-  const id = url.searchParams.get("id");
-  if (!id) return new Response("Missing id", { status: 400 });
-
-  try {
-    const api = `https://pipedapi.syncpiped.video/streams/${id}`;
-    const res = await fetch(api);
-
-    let data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      return new Response("Piped returned invalid JSON", { status: 502 });
+    if (url.pathname === "/test") {
+      return new Response("OK — Worker działa");
     }
 
-    if (!data.audioStreams || data.audioStreams.length === 0) {
-      return new Response("Brak audioStreams", { status: 404 });
+    //
+    // 🔵 POBIERANIE AUDIO
+    //
+    if (url.pathname === "/download") {
+      const id = url.searchParams.get("id");
+      if (!id) return new Response("Missing id", { status: 400 });
+
+      console.log("▶ Pobieram audio dla ID:", id);
+
+      const apiUrls = PIPED_MIRRORS.map(m => `${m}/streams/${id}`);
+      const data = await fetchJsonWithFallback(apiUrls);
+
+      if (!data || !data.audioStreams) {
+        return new Response("Brak audioStreams — wszystkie mirrory padły", { status: 502 });
+      }
+
+      const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
+      const audio = await fetch(best.url);
+
+      await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
+
+      return new Response("OK — zapisano do R2");
     }
 
-    const best = data.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-    const audio = await fetch(best.url);
-
-    await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
-
-    return new Response("OK — zapisano do R2");
-  } catch (err) {
-    return new Response("ERROR: " + err.message, { status: 500 });
-  }
-}
-
-
     //
-    // 2) AUTOMATYCZNE POBIERANIE NOWYCH ODCINKÓW (CRON)
+    // 🔵 CRON — pobieranie nowych filmów
     //
     if (url.pathname === "/cron") {
-      try {
-        const api = `https://pipedapi.kavin.rocks/channel/${CHANNEL_ID}`;
-        const data = await fetch(api).then(r => r.json());
+      const apiUrls = PIPED_MIRRORS.map(m => `${m}/channel/${CHANNEL_ID}`);
+      const data = await fetchJsonWithFallback(apiUrls);
 
-        if (!data.relatedStreams) {
-          return new Response("No videos", { status: 500 });
-        }
-
-        const videos = data.relatedStreams.slice(0, 10);
-
-        for (const v of videos) {
-          const id = v.url.split("=")[1];
-
-          const exists = await env.R2_BUCKET.head(`${id}.m4a`);
-          if (exists) continue;
-
-          console.log("Nowy film:", id);
-
-          const streamApi = `https://pipedapi.kavin.rocks/streams/${id}`;
-          const streamData = await fetch(streamApi).then(r => r.json());
-
-          if (!streamData.audioStreams) continue;
-
-          const best = streamData.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
-          const audio = await fetch(best.url);
-
-          await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
-        }
-
-        return new Response("Cron OK");
-      } catch (err) {
-        return new Response("Cron ERROR: " + err.message, { status: 500 });
+      if (!data || !data.relatedStreams) {
+        return new Response("Cron ERROR — brak relatedStreams", { status: 502 });
       }
+
+      const videos = data.relatedStreams.slice(0, 10);
+
+      for (const v of videos) {
+        const id = v.url.split("=")[1];
+
+        const exists = await env.R2_BUCKET.head(`${id}.m4a`);
+        if (exists) continue;
+
+        console.log("▶ Nowy film:", id);
+
+        const streamUrls = PIPED_MIRRORS.map(m => `${m}/streams/${id}`);
+        const streamData = await fetchJsonWithFallback(streamUrls);
+
+        if (!streamData || !streamData.audioStreams) continue;
+
+        const best = streamData.audioStreams.sort((a, b) => b.bitrate - a.bitrate)[0];
+        const audio = await fetch(best.url);
+
+        await env.R2_BUCKET.put(`${id}.m4a`, audio.body);
+      }
+
+      return new Response("Cron OK");
     }
 
     //
-    // 3) RSS PODCASTU
+    // 🔵 RSS PODCASTU
     //
     if (url.pathname === "/podcast") {
       const list = await env.R2_BUCKET.list();
@@ -113,6 +134,6 @@ export default {
       });
     }
 
-    return new Response("OK");
+    return new Response("OK — Worker działa");
   }
 };

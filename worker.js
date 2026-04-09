@@ -49,12 +49,11 @@ export default {
           return new Response("No videos", { status: 500 });
         }
 
-        const videos = data.relatedStreams.slice(0, 10); // ostatnie 10 filmów
+        const videos = data.relatedStreams.slice(0, 10);
 
         for (const v of videos) {
           const id = v.url.split("=")[1];
 
-          // sprawdź czy plik już istnieje
           const exists = await env.R2_BUCKET.head(`${id}.m4a`);
           if (exists) continue;
 

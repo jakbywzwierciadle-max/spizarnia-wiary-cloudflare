@@ -9,6 +9,9 @@ jobs:
   download:
     runs-on: ubuntu-latest
 
+    env:
+      RAILWAY_API_BASE: https://spizarnia-wiary-production.up.railway.app
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,8 +19,8 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl ffmpeg
-    
+          sudo apt-get install -y jq curl ffmpeg awscli
+
       - name: Fetch latest 2 video IDs
         run: |
           curl -s "https://www.youtube.com/feeds/videos.xml?channel_id=UCO6_hwMtQZ0SLElfDMaqJGQ" \
@@ -27,38 +30,33 @@ jobs:
           echo "Fetched video IDs:"
           cat video_ids.txt
 
-      - name: Install yt-dlp
-        run: |
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod +x /usr/local/bin/yt-dlp
-    
-      - name: Write cookies to file
-        env:
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        run: |
-          echo "${YOUTUBE_COOKIES}" > cookies.txt
-
-      - name: Download audio via public API
+      - name: Download audio via Railway API and convert to MP3
         run: |
           mkdir -p output
 
           while read ID; do
             echo "Processing video ID: $ID"
 
-            curl -L "https://piped.video/api/v1/download?url=https://www.youtube.com/watch?v=$ID&itag=140" \
-              -o "output/$ID.m4a"
+            curl -L "${RAILWAY_API_BASE}/download?id=${ID}" \
+              -o "output/${ID}.m4a"
+
+            if [ ! -s "output/${ID}.m4a" ]; then
+              echo "Downloaded file for $ID is empty or missing — skipping"
+              rm -f "output/${ID}.m4a"
+              continue
+            fi
 
             echo "Converting to MP3"
-            ffmpeg -i "output/$ID.m4a" -vn -ab 128k "output/$ID.mp3"
+            ffmpeg -y -i "output/${ID}.m4a" -vn -ab 128k "output/${ID}.mp3"
 
-            rm "output/$ID.m4a"
+            rm "output/${ID}.m4a"
           done < video_ids.txt
 
-          ls -l output
-
-
+          echo "Output directory contents:"
+          ls -l output || echo "No files in output"
 
       - name: Upload to Cloudflare R2
+        if: success()
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -70,9 +68,9 @@ jobs:
           aws configure set default.region auto
 
           for f in output/*.mp3; do
+            [ -e "$f" ] || { echo "No MP3 files to upload"; break; }
             echo "Uploading $f"
             aws s3 cp "$f" \
               "s3://${R2_BUCKET}/$(basename "$f")" \
               --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           done
-

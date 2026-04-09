@@ -2,11 +2,12 @@ const CHANNEL_ID = "UCO6_hwMtQZ0SLElfDMaqJGQ"; // Spiżarnia Wiary
 
 // Lista mirrorów Piped — automatyczny fallback
 const PIPED_MIRRORS = [
-  "https://pipedapi.video",
-  "https://pipedapi.syncpiped.video",
-  "https://pipedapi.moomoo.me",
-  "https://pipedapi.kavin.rocks"
+  "https://piped-api.cfe.re",
+  "https://pipedapi.r4fo.com",
+  "https://api-piped.mha.fi",
+  "https://piped-api.garudalinux.org"
 ];
+
 
 // Pobieranie JSON z fallbackiem
 async function fetchJsonWithFallback(urls) {

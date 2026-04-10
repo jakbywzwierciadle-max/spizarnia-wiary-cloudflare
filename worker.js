@@ -88,6 +88,8 @@ export default {
       // 1️⃣ PIPED
       const pipedUrls = PIPED_MIRRORS.map(m => `${m}/streams/${id}`);
       let data = await fetchJsonWithFallback(pipedUrls);
+      await env.R2_BUCKET.put(`error-${id}.txt`, e.message);
+
 
       // 2️⃣ INVIDIOUS
       if (!data || !data.audioStreams) {
@@ -101,6 +103,8 @@ export default {
             const stream = await fetch(audio.url);
             await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
             return new Response("OK — zapisano z Invidious");
+            await env.R2_BUCKET.put(`error-${id}.txt`, e.message);
+
           }
         }
       }
@@ -115,6 +119,8 @@ export default {
             const stream = await fetch(audio.url);
             await env.R2_BUCKET.put(`${id}.m4a`, stream.body);
             return new Response("OK — zapisano z prywatnego yt-dlp");
+            await env.R2_BUCKET.put(`error-${id}.txt`, e.message);
+
           }
         }
       }

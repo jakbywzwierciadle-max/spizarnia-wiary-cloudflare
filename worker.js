@@ -130,41 +130,6 @@ export default {
       return new Response("Brak audioStreams — wszystkie źródła padły", { status: 502 });
     }
 
-    // ----------------------
-    // 🔵 RSS PODCASTU
-    // ----------------------
-    if (url.pathname === "/podcast") {
-      const list = await env.R2_BUCKET.list();
-
-      const items = list.objects.map(obj => {
-        const id = obj.key.replace(".m4a", "");
-        const fileUrl = `https://pub-${env.R2_BUCKET.id}.r2.dev/${obj.key}`;
-        return `
-          <item>
-            <title>${id}</title>
-            <enclosure url="${fileUrl}" length="${obj.size}" type="audio/mp4" />
-            <guid>${id}</guid>
-            <pubDate>${new Date(obj.uploaded).toUTCString()}</pubDate>
-          </item>
-        `;
-      }).join("");
-
-      const rss = `
-        <rss version="2.0">
-          <channel>
-            <title>Spiżarnia Wiary – Podcast</title>
-            <link>${url.origin}/podcast</link>
-            <description>Automatyczny podcast z kanału YouTube Spiżarnia Wiary</description>
-            ${items}
-          </channel>
-        </rss>
-      `.trim();
-
-      return new Response(rss, {
-        headers: { "Content-Type": "application/rss+xml" }
-      });
-    }
-
     return new Response("OK — Worker działa");
   }
 };

@@ -16,7 +16,7 @@ const INVIDIOUS_MIRRORS = [
 ];
 
 // 🔹 Twoja prywatna instancja yt-dlp-api (fallback 3)
-const YTDLP_PRIVATE = "https://yt-dlp-api.<twoja-domena>.workers.dev/?id=";
+const YTDLP_PRIVATE = "https://yt-dlp-api.jakbywzwierciadle.workers.dev/?id=";
 
 // ----------------------
 // 🔧 FUNKCJE POMOCNICZE
